@@ -1,0 +1,50 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier la présence du zip
+        run: |
+          if [ ! -f SuiviVol.zip ]; then
+            echo "SuiviVol.zip pas encore envoyé, rien à compiler."
+            exit 0
+          fi
+          unzip -q -o SuiviVol.zip
+          echo "ZIP_OK=1" >> $GITHUB_ENV
+
+      - uses: actions/setup-java@v4
+        if: env.ZIP_OK == '1'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: env.ZIP_OK == '1'
+
+      - name: Compiler l'APK
+        if: env.ZIP_OK == '1'
+        working-directory: SuiviVol
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Publier l'APK
+        if: env.ZIP_OK == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp SuiviVol/app/build/outputs/apk/debug/app-debug.apk SuiviVol.apk
+          gh release delete derniere-version --yes --cleanup-tag || true
+          gh release create derniere-version SuiviVol.apk \
+            --title "Dernière version" \
+            --notes "APK généré automatiquement"
